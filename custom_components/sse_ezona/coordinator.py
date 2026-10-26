@@ -75,7 +75,12 @@ class SSECoordinator(DataUpdateCoordinator):
                     "unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR,
                     "mean_type": StatisticMeanType.NONE, "has_sum": True}
         async_add_external_statistics(self.hass, metadata, rows)
-        await get_instance(self.hass).async_block_till_done()
+        # Recorder may wait for bootstrap to finish before processing this
+        # queue. Waiting here during entry setup would deadlock startup.
+        # The retained archive is replayed on every restart, including after
+        # a shutdown before queued statistics were committed.
+        if self.hass.is_running:
+            await get_instance(self.hass).async_block_till_done()
 
     def snapshot(self, now=None):
         now = now or dt_util.utcnow()

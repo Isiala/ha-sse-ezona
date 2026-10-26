@@ -23,6 +23,10 @@ First public HACS release, based on the previously deployed local 0.2.0 integrat
 - Optional SSE-only CONNECT proxy, separate proxy authentication and no direct fallback.
 - Reauthentication, status sensors and authenticated archive access for custom dashboards.
 
+### Fixed
+
+- Avoid a Home Assistant startup deadlock when replaying retained statistics while Recorder is waiting for bootstrap to finish. Statistics are queued during startup and their commit is awaited only after Home Assistant is running. Retained history still replays after a restart.
+
 ### Compatibility
 
 Requires Home Assistant 2026.10.2 or newer. Config-entry version, domain and statistic IDs are unchanged, so existing manual installations can move to HACS without recreating their meter. No personal history, dashboard exports, credentials or VPN configuration is included.

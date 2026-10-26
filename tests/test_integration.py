@@ -1,6 +1,7 @@
 from copy import deepcopy
+import asyncio
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -136,6 +137,7 @@ async def test_real_recorder_hourly_import_and_replay(hass, tmp_path):
     await coordinator.async_publish_statistics(None)
     await coordinator.async_publish_statistics(None)
     recorder = get_instance(hass)
+    await recorder.async_block_till_done()
     start = datetime.fromtimestamp(day["start"] - 3600, timezone.utc)
     end = datetime.fromtimestamp(day["start"] + 25 * 3600, timezone.utc)
     result = await recorder.async_add_executor_job(
@@ -144,6 +146,40 @@ async def test_real_recorder_hourly_import_and_replay(hass, tmp_path):
     assert len(rows) == 26  # one baseline plus 25 distinct UTC hours
     assert rows[-1]["sum"] == 100
     assert sum(row.get("change") or 0 for row in rows) == 100
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_replay_does_not_wait_for_recorder_startup(hass):
+    coordinator = coordinator_for(hass)
+    coordinator.async_publish_statistics = SSECoordinator.async_publish_statistics.__get__(coordinator)
+    day = make_day()
+    coordinator.store.async_load = AsyncMock(return_value={**coordinator.archive, "days": {day["date"]: day}})
+    recorder = MagicMock()
+    startup_finished = asyncio.Event()
+    recorder.async_block_till_done = AsyncMock(side_effect=startup_finished.wait)
+    with patch.object(type(hass), "is_running", new_callable=PropertyMock, return_value=False), \
+         patch("custom_components.sse_ezona.coordinator.get_instance", return_value=recorder), \
+         patch("custom_components.sse_ezona.coordinator.async_add_external_statistics") as enqueue:
+        await asyncio.wait_for(coordinator.async_load(), timeout=2)
+    enqueue.assert_called_once()
+    recorder.async_block_till_done.assert_not_awaited()
+    assert coordinator.archive["days"] == {day["date"]: day}
+
+
+@pytest.mark.asyncio
+async def test_running_sync_still_waits_for_recorder_commit(hass):
+    coordinator = coordinator_for(hass)
+    coordinator.async_publish_statistics = SSECoordinator.async_publish_statistics.__get__(coordinator)
+    day = make_day()
+    coordinator.archive["days"] = {day["date"]: day}
+    recorder = MagicMock()
+    recorder.async_block_till_done = AsyncMock()
+    with patch.object(type(hass), "is_running", new_callable=PropertyMock, return_value=True), \
+         patch("custom_components.sse_ezona.coordinator.get_instance", return_value=recorder), \
+         patch("custom_components.sse_ezona.coordinator.async_add_external_statistics") as enqueue:
+        await coordinator.async_publish_statistics(None)
+    enqueue.assert_called_once()
+    recorder.async_block_till_done.assert_awaited_once()
 
 
 @pytest.mark.asyncio
