@@ -21,12 +21,14 @@ def build(tag=None):
     match = re.search(rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}\n(.*?)(?=^## |\Z)", changelog, re.M | re.S)
     if not match:
         raise SystemExit("Missing dated changelog entry for this version")
+    if (COMPONENT / "LICENSE").read_bytes() != (ROOT / "LICENSE").read_bytes():
+        raise SystemExit("Component license does not match repository license")
     files = []
     for file in sorted(COMPONENT.rglob("*")):
         if not file.is_file() or "__pycache__" in file.parts or file.suffix == ".pyc":
             continue
         parts = file.relative_to(COMPONENT).parts
-        allowed = (len(parts) == 1 and (file.suffix == ".py" or file.name in {"manifest.json", "strings.json"})
+        allowed = (len(parts) == 1 and (file.suffix == ".py" or file.name in {"manifest.json", "strings.json", "LICENSE"})
                    or len(parts) == 2 and parts[0] == "translations" and file.suffix == ".json"
                    or len(parts) == 2 and parts[0] == "brand" and file.suffix in {".png", ".svg"})
         if not allowed or file.is_symlink():
