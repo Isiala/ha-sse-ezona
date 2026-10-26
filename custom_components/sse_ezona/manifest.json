@@ -1,0 +1,19 @@
+{
+  "domain": "sse_ezona",
+  "name": "SSE eZóna",
+  "codeowners": [
+    "@Isiala"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "recorder"
+  ],
+  "documentation": "https://github.com/Isiala/ha-sse-ezona",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/Isiala/ha-sse-ezona/issues",
+  "requirements": [
+    "xlrd==2.0.2"
+  ],
+  "version": "0.3.0"
+}

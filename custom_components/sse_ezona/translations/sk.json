@@ -1,0 +1,56 @@
+{
+  "title": "SSE eZóna",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pripojiť SSE eZónu",
+        "description": "Každý deň načíta profil spotreby elektriny za včerajšok podľa času Europe/Bratislava. Posledných sedem dní opätovne kontroluje kvôli opravám. Prihlasovacie údaje sa ukladajú v Home Assistante; token zostáva iba v pamäti. Voliteľná HTTP CONNECT proxy sa používa iba pre SSE. Pri jej výpadku sa priame pripojenie nepoužije.",
+        "data": {
+          "username": "E-mail alebo používateľské meno SSE",
+          "password": "Heslo SSE",
+          "eic": "EIC odberného miesta (16 znakov)",
+          "fetch_hour": "Hodina denného načítania (0–23, Europe/Bratislava)",
+          "proxy_url": "URL VPN proxy (voliteľné)",
+          "proxy_username": "Používateľské meno proxy (voliteľné)",
+          "proxy_password": "Heslo proxy (voliteľné)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Znovu sa prihlásiť do SSE",
+        "description": "SSE odmietla uložené prihlasovacie údaje alebo prístup k odbernému miestu. Zadajte aktuálny e-mail a heslo.",
+        "data": {
+          "username": "E-mail alebo používateľské meno SSE",
+          "password": "Heslo SSE"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodarilo sa pripojiť k SSE alebo načítať export. Skúste to neskôr.",
+      "invalid_auth": "SSE odmietla prihlásenie alebo prístup k tomuto odbernému miestu.",
+      "invalid_eic": "Zadajte 16-znakový EIC bez predpony ELECTRICITY_.",
+      "extra_auth_step": "Účet vyžaduje ďalší interaktívny krok prihlásenia, ktorý nie je podporovaný.",
+      "invalid_proxy": "Zadajte adresu proxy začínajúcu http:// alebo https:// bez cesty a prihlasovacích údajov v URL. Prihlasovacie údaje proxy vyžadujú URL; meno nesmie obsahovať dvojbodku."
+    },
+    "abort": {
+      "already_configured": "Toto odberné miesto SSE je už nakonfigurované.",
+      "reauth_successful": "Prihlasovacie údaje SSE boli aktualizované."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Denné načítanie a VPN proxy",
+        "description": "Integrácia každých 30 minút overí plán a po zvolenej hodine kontaktuje SSE. Nezverejnené dni opakuje najviac raz za tri hodiny. Voliteľná proxy sa používa iba pre SSE. Pre priame pripojenie nechajte URL prázdne. Zmena nastavení znovu načíta integráciu.",
+        "data": {
+          "fetch_hour": "Hodina načítania (Europe/Bratislava)",
+          "proxy_url": "URL VPN proxy (voliteľné)",
+          "proxy_username": "Používateľské meno proxy (voliteľné)",
+          "proxy_password": "Heslo proxy (voliteľné)"
+        }
+      }
+    },
+    "error": {
+      "invalid_proxy": "Zadajte platnú adresu HTTP proxy bez cesty a prihlasovacích údajov v URL."
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "title": "SSE eZóna",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect SSE eZóna",
+        "description": "Fetch yesterday's electricity profile daily in Europe/Bratislava time. Rechecks the last seven days for revisions. SSE credentials are stored in Home Assistant's config entry; tokens stay in memory. For a Slovakia VPN gateway, enter its HTTP CONNECT proxy URL. Only SSE requests use it; a failed proxy never falls back to a direct connection.",
+        "data": {
+          "username": "SSE email or username",
+          "password": "SSE password",
+          "eic": "Electricity EIC (16 characters)",
+          "fetch_hour": "Daily fetch hour (0–23, Europe/Bratislava)",
+          "proxy_url": "VPN proxy URL (optional)",
+          "proxy_username": "Proxy username (optional)",
+          "proxy_password": "Proxy password (optional)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Sign in to SSE again",
+        "description": "SSE rejected the saved login or meter access. Enter your current email and password.",
+        "data": {
+          "username": "SSE email or username",
+          "password": "SSE password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to SSE or read its export. Try again later.",
+      "invalid_auth": "SSE rejected the login or access to this meter.",
+      "invalid_eic": "Enter the 16-character EIC without ELECTRICITY_.",
+      "extra_auth_step": "This account requires an additional interactive login step, which is not supported.",
+      "invalid_proxy": "Enter an http:// or https:// proxy address without a path or embedded credentials. Proxy credentials require a proxy URL; the username cannot contain a colon."
+    },
+    "abort": {
+      "already_configured": "This SSE meter is already configured.",
+      "reauth_successful": "SSE credentials updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Daily fetch and VPN proxy",
+        "description": "The integration checks locally every 30 minutes and contacts SSE once after this hour. Unpublished days retry at most every three hours. The optional proxy applies only to SSE. Leave its URL empty for direct access. Changing it reloads the integration.",
+        "data": {
+          "fetch_hour": "Fetch hour (Europe/Bratislava)",
+          "proxy_url": "VPN proxy URL (optional)",
+          "proxy_username": "Proxy username (optional)",
+          "proxy_password": "Proxy password (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_proxy": "Enter an http:// or https:// proxy address without a path or embedded credentials. Proxy credentials require a proxy URL; the username cannot contain a colon."
+    }
+  }
+}

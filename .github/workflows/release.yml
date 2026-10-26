@@ -1,0 +1,53 @@
+name: Release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r requirements_test.txt
+      - run: python -m pytest -q
+  hassfest:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: home-assistant/actions/hassfest@cd6f3635a740c84d8a14f6121a90068b8ece6bf6 # master
+  publish:
+    if: github.ref == 'refs/heads/main'
+    needs: [tests, hassfest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Build checked release
+        run: |
+          release_tag="$(python -c 'import json; print("v" + json.load(open("custom_components/sse_ezona/manifest.json"))["version"])')"
+          python scripts/build_release.py --tag "$release_tag"
+          echo "RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+      - name: Publish notes and manual installation archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$RELEASE_TAG" dist/ha-sse-ezona-*.zip dist/SHA256SUMS.txt --target "$GITHUB_SHA" --title "SSE eZóna $RELEASE_TAG" --notes-file dist/RELEASE_NOTES.md
+      - name: Verify published HACS release
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
+        with:
+          category: integration
+          comment: 'false'
