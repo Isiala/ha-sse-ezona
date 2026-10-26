@@ -4,11 +4,13 @@ import probatio as vol
 from homeassistant.components import websocket_api
 from homeassistant.const import Platform
 from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
 
 from .const import CONF_EIC, DOMAIN
 from .coordinator import SSEConfigEntry, SSECoordinator
 
 PLATFORMS = [Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass, config):

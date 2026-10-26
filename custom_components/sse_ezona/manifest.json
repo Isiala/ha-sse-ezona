@@ -1,9 +1,6 @@
 {
   "domain": "sse_ezona",
   "name": "SSE eZóna",
-  "categories": [
-    "energy.meters_monitoring"
-  ],
   "codeowners": [
     "@Isiala"
   ],
