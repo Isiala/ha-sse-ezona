@@ -1,6 +1,6 @@
 {
   "domain": "sse_ezona",
-  "name": "SSE eZóna",
+  "name": "SSE eZ\u00f3na",
   "codeowners": [
     "@Isiala"
   ],
@@ -15,5 +15,5 @@
   "requirements": [
     "xlrd==2.0.2"
   ],
-  "version": "0.3.0"
+  "version": "0.3.1"
 }

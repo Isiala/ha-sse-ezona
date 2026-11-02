@@ -261,3 +261,173 @@ async def test_setup_validates_login_and_export_through_proxy(hass):
         assert cls.call_args.kwargs["proxy_password"] == data["proxy_password"]
         cls.return_value.login.assert_awaited_once_with(DATA["username"], DATA["password"])
         cls.return_value.export.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('phase', ['login', 'export'])
+async def test_transient_failure_stays_visible_across_cooldown_and_restart(hass, phase):
+    from datetime import timedelta
+    from custom_components.sse_ezona.api import CannotConnect
+
+    coordinator = coordinator_for(hass)
+    previous = make_day('2026-10-24')
+    coordinator.archive['days'] = {previous['date']: previous}
+    coordinator.archive['last_success'] = '2026-10-25T10:00:00+00:00'
+    getattr(coordinator.client, phase).side_effect = CannotConnect('Unexpected login response')
+    with patch('custom_components.sse_ezona.coordinator.dt_util.utcnow', return_value=NOW):
+        data = await coordinator._async_update_data()
+    assert data['status'] == f'retrying_{phase}'
+    assert data['next_attempt'] == (NOW + timedelta(minutes=30)).isoformat()
+    assert data['latest_day'] == previous['date']
+    assert data['last_success'] == '2026-10-25T10:00:00+00:00'
+    assert coordinator.archive['fetched_on'] is None
+    assert coordinator.archive['last_error'] == phase
+    assert 'Unexpected login response' not in str(coordinator.archive)
+    coordinator.store.async_save.assert_awaited_with(coordinator.archive)
+
+    restarted = coordinator_for(hass)
+    restarted.store.async_load = AsyncMock(return_value=deepcopy(coordinator.archive))
+    await restarted.async_load()
+    with patch('custom_components.sse_ezona.coordinator.dt_util.utcnow', return_value=NOW + timedelta(minutes=29)):
+        data = await restarted._async_update_data()
+    assert data['status'] == f'retrying_{phase}'
+    restarted.client.login.assert_not_awaited()
+
+    days = {d['date']: d for d in [make_day(f'2026-10-{n}') for n in range(19, 26)]}
+    with patch('custom_components.sse_ezona.coordinator.dt_util.utcnow', return_value=NOW + timedelta(minutes=30)), \
+         patch('custom_components.sse_ezona.coordinator.parse_export', return_value=days):
+        data = await restarted._async_update_data()
+        await restarted._async_update_data()
+    assert data['status'] == 'complete'
+    assert data['last_error'] is None
+    assert data['last_success'] == (NOW + timedelta(minutes=30)).isoformat()
+    assert data['next_attempt'] == '2026-10-27T11:00:00+00:00'  # configured 12:00 local
+    assert restarted.client.login.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_incomplete_success_clears_login_error_but_keeps_pending_retry(hass):
+    from datetime import timedelta
+
+    coordinator = coordinator_for(hass)
+    coordinator.archive['last_error'] = 'login'
+    day = make_day()
+    with patch('custom_components.sse_ezona.coordinator.dt_util.utcnow', return_value=NOW), \
+         patch('custom_components.sse_ezona.coordinator.parse_export', return_value={day['date']: day}):
+        data = await coordinator._async_update_data()
+    assert data['status'] == 'pending'
+    assert data['last_error'] is None
+    assert data['next_attempt'] == (NOW + timedelta(minutes=30)).isoformat()
+    assert len(data['pending']) == 6
+
+
+@pytest.mark.asyncio
+async def test_reauth_is_distinct_from_transient_retry(hass):
+    coordinator = coordinator_for(hass)
+    coordinator.client.login.side_effect = InvalidAuth()
+    with patch('custom_components.sse_ezona.coordinator.dt_util.utcnow', return_value=NOW):
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
+    data = coordinator.snapshot(NOW)
+    assert data['status'] == 'reauth_required'
+    assert data['next_attempt'] is None
+
+
+@pytest.mark.asyncio
+async def test_sync_status_exposes_retry_schedule(hass):
+    from datetime import timedelta
+    from custom_components.sse_ezona.sensor import SSESensor
+
+    coordinator = coordinator_for(hass)
+    coordinator.archive.update(last_error='login', last_attempt=NOW.timestamp())
+    coordinator.async_set_updated_data(coordinator.snapshot(NOW))
+    sensor = SSESensor(coordinator, 'sync_status')
+    assert sensor.native_value == 'retrying_login'
+    attributes = sensor.extra_state_attributes
+    assert attributes['last_attempt'] == NOW.isoformat()
+    assert attributes['next_attempt'] == (NOW + timedelta(minutes=30)).isoformat()
+    assert attributes['fetch_hour'] == 12
+    assert 'test-password' not in str(attributes)
+
+
+@pytest.mark.asyncio
+async def test_real_refresh_keeps_retry_status_available_until_recovery(hass, freezer):
+    from datetime import timedelta
+    from custom_components.sse_ezona.api import CannotConnect
+    from custom_components.sse_ezona.sensor import SSESensor
+
+    freezer.move_to(NOW)
+    coordinator = coordinator_for(hass)
+    coordinator.client.login.side_effect = CannotConnect('Unexpected login response')
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    sensor = SSESensor(coordinator, 'sync_status')
+    assert sensor.available
+    assert sensor.native_value == 'retrying_login'
+    freezer.move_to(NOW + timedelta(minutes=29))
+    await coordinator.async_refresh()
+    assert coordinator.client.login.await_count == 1
+    assert sensor.native_value == 'retrying_login'
+    assert sensor.available
+    freezer.move_to(NOW + timedelta(minutes=30))
+    coordinator.client.login.side_effect = None
+    days = {d['date']: d for d in [make_day(f'2026-10-{n}') for n in range(19, 26)]}
+    with patch('custom_components.sse_ezona.coordinator.parse_export', return_value=days):
+        await coordinator.async_refresh()
+    assert coordinator.client.login.await_count == 2
+    assert sensor.available
+    assert sensor.native_value == 'complete'
+
+
+@pytest.mark.asyncio
+async def test_fetch_hour_defaults_and_existing_options(hass):
+    for data, options, expected in [
+        ({k: v for k, v in DATA.items() if k != 'fetch_hour'}, {}, 6),
+        (DATA, {}, 12),
+        (DATA, {'fetch_hour': 6}, 6),
+    ]:
+        entry = MockConfigEntry(domain=DOMAIN, data=data, options=options)
+        coordinator = SSECoordinator(hass, entry)
+        assert coordinator.snapshot(NOW)['fetch_hour'] == expected
+
+
+@pytest.mark.asyncio
+async def test_manual_sensor_refresh_fetches_before_start_hour_and_coalesces_duplicates(hass, freezer):
+    from datetime import timedelta
+    from custom_components.sse_ezona.sensor import SSESensor
+
+    # Automatic fetching waits for noon for this existing entry, but an explicit
+    # update_entity should fetch immediately and still guard rapid duplicates.
+    early = NOW.replace(hour=7)
+    freezer.move_to(early)
+    coordinator = coordinator_for(hass)
+    coordinator.archive['last_attempt'] = (early - timedelta(minutes=2)).timestamp()
+    days = {d['date']: d for d in [make_day(f'2026-10-{n}') for n in range(19, 26)]}
+    with patch('custom_components.sse_ezona.coordinator.parse_export', return_value=days):
+        await coordinator.async_refresh()
+        coordinator.client.login.assert_not_awaited()
+        await SSESensor(coordinator, 'sync_status').async_update()
+        await SSESensor(coordinator, 'yesterday').async_update()
+    assert coordinator.data['status'] == 'complete'
+    assert coordinator.client.login.await_count == 1
+    assert not coordinator._manual_fetch
+
+
+@pytest.mark.asyncio
+async def test_manual_failure_retains_retry_schedule_and_clears_manual_flag(hass, freezer):
+    from datetime import timedelta
+    from custom_components.sse_ezona.api import CannotConnect
+
+    freezer.move_to(NOW)
+    coordinator = coordinator_for(hass)
+    coordinator.client.login.side_effect = CannotConnect('temporary failure')
+    await coordinator.async_manual_refresh()
+    assert coordinator.data['status'] == 'retrying_login'
+    assert not coordinator._manual_fetch
+    freezer.move_to(NOW + timedelta(seconds=29))
+    await coordinator.async_manual_refresh()
+    assert coordinator.client.login.await_count == 1
+    freezer.move_to(NOW + timedelta(minutes=10))
+    await coordinator.async_refresh()
+    assert coordinator.client.login.await_count == 1
+    assert coordinator.data['next_attempt'] == (NOW + timedelta(minutes=30)).isoformat()

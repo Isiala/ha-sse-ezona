@@ -40,7 +40,7 @@
     "step": {
       "init": {
         "title": "Denné načítanie a VPN proxy",
-        "description": "Integrácia každých 30 minút overí plán a po zvolenej hodine kontaktuje SSE. Nezverejnené dni opakuje najviac raz za tri hodiny. Voliteľná proxy sa používa iba pre SSE. Pre priame pripojenie nechajte URL prázdne. Zmena nastavení znovu načíta integráciu.",
+        "description": "Integrácia každých 30 minút overí plán a po zvolenej hodine kontaktuje SSE. Pri nových inštaláciách začína o 06:00. Nezverejnené dni a dočasné chyby opakuje s odstupom aspoň 30 minút, pri najbližšej kontrole plánu. Existujúca hodina načítania zostáva zachovaná; pre skoršie načítanie ju zmeňte tu. Voliteľná proxy sa používa iba pre SSE. Pre priame pripojenie nechajte URL prázdne. Zmena nastavení znovu načíta integráciu.",
         "data": {
           "fetch_hour": "Hodina načítania (Europe/Bratislava)",
           "proxy_url": "URL VPN proxy (voliteľné)",

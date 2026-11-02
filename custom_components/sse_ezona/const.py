@@ -1,4 +1,5 @@
 """SSE eZóna integration constants."""
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 DOMAIN = "sse_ezona"
@@ -10,5 +11,6 @@ CONF_FETCH_HOUR = "fetch_hour"
 CONF_PROXY_URL = "proxy_url"
 CONF_PROXY_USERNAME = "proxy_username"
 CONF_PROXY_PASSWORD = "proxy_password"
-DEFAULT_FETCH_HOUR = 12
+DEFAULT_FETCH_HOUR = 6
+FETCH_RETRY_INTERVAL = timedelta(minutes=30)
 SEED_FILE = "sse_ezona_seed.json"

@@ -16,6 +16,29 @@ class CannotConnect(Exception):
     """SSE could not be reached or returned an unexpected response."""
 
 
+class GatewayRejected(CannotConnect):
+    """The SSE gateway returned a request-rejection page instead of API data."""
+
+
+def response_kind(content_type):
+    """Bounded response metadata, without echoing untrusted header values."""
+    media_type = content_type.partition(";")[0].strip().lower()
+    if media_type == "text/html":
+        return "HTML"
+    if media_type == "application/json" or media_type.endswith("+json"):
+        return "JSON"
+    return "other content"
+
+
+def request_stage(path):
+    """Never include meter IDs, query strings or tokens in an error label."""
+    if path == "/auth/api/public/login/v1/start":
+        return "login-start"
+    if path == "/auth/api/public/login/v1/authenticate":
+        return "authentication"
+    return "profile export"
+
+
 class InvalidAuth(Exception):
     """Credentials or token were rejected."""
 
@@ -84,35 +107,65 @@ class SSEClient:
                 proxy=self.proxy_url, proxy_headers=self.proxy_headers,
                 timeout=aiohttp.ClientTimeout(total=45),
             ) as response:
-                if response.status in (401, 403):
-                    raise InvalidAuth("SSE rejected authentication or meter access")
-                if response.status != 200:
-                    raise CannotConnect(f"SSE returned HTTP {response.status}")
                 # Bound malformed responses and avoid holding an unbounded body.
                 data = bytearray()
                 async for chunk in response.content.iter_chunked(65536):
                     data.extend(chunk)
                     if len(data) > 25_000_000:
                         raise CannotConnect("SSE response exceeded the size limit")
-                return bytes(data), response.headers.get("Content-Type", "")
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+                content_type = response.headers.get("Content-Type", "")
+                # The gateway also uses HTTP 200 for this HTML denial. Detect it
+                # before credential errors: a matching 403 page is not evidence
+                # of a wrong password. Do not log the page or its support ID.
+                if response_kind(content_type) == "HTML" and b"request rejected" in bytes(data).lower():
+                    raise GatewayRejected(
+                        f"SSE gateway rejected {request_stage(path)} request "
+                        f"(HTTP {response.status}, HTML Request Rejected page). "
+                        "Check eZona portal access on the configured connection; "
+                        "contact SSE if it is also rejected."
+                    )
+                if response.status in (401, 403):
+                    raise InvalidAuth("SSE rejected authentication or meter access")
+                if response.status != 200:
+                    raise CannotConnect(f"SSE returned HTTP {response.status}")
+                return bytes(data), content_type
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             message = "Could not reach SSE through the configured proxy" if self.proxy_url else "Could not reach SSE"
-            raise CannotConnect(message) from None
+            # Exception strings may contain URLs or proxy credentials. Classify
+            # only known transport types, never include their raw messages.
+            if isinstance(exc, aiohttp.ClientConnectorCertificateError):
+                reason = "TLS certificate verification failed"
+                code = getattr(exc.certificate_error, "verify_code", None)
+                if isinstance(code, int):
+                    reason += f", verification code {code}"
+            elif isinstance(exc, aiohttp.ClientConnectorSSLError):
+                reason = "TLS handshake failed"
+            elif isinstance(exc, aiohttp.ClientProxyConnectionError):
+                reason = "proxy connection failed"
+            elif isinstance(exc, aiohttp.ClientConnectorError):
+                reason = "DNS or socket connection failed"
+            elif isinstance(exc, asyncio.TimeoutError):
+                reason = "request timed out"
+            else:
+                reason = "HTTP transport failed"
+            raise CannotConnect(f"{message}: {reason} during {request_stage(path)}") from None
 
     async def post(self, path, payload):
         body, content_type = await self.request(path, payload=payload)
-        if "json" not in content_type:
-            raise CannotConnect("Unexpected login response")
+        if response_kind(content_type) != "JSON":
+            raise CannotConnect(f"Unexpected {request_stage(path)} response (HTTP 200, {response_kind(content_type)}; expected JSON)")
         try:
             result = json.loads(body)
         except (ValueError, UnicodeError):
-            raise CannotConnect("Unreadable login response") from None
+            raise CannotConnect(f"Unreadable {request_stage(path)} JSON response") from None
         if not isinstance(result, dict):
-            raise CannotConnect("Unexpected login response")
+            raise CannotConnect(f"Unexpected {request_stage(path)} JSON response (expected an object)")
         return result
 
     async def login(self, username, password):
-        state = secrets.token_urlsafe(24)
+        # SSE's gateway rejects otherwise valid state values containing '-'.
+        # Hex retains the same 192 bits of randomness without that character.
+        state = secrets.token_hex(24)
         start = await self.post("/auth/api/public/login/v1/start", {
             "clientId": "sseWebPortal", "redirectUri": "/", "responseType": "token",
             "scope": "CHANNEL_WEB AUTHTYPE_* PERM_* ROLE_*", "state": state,
