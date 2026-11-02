@@ -1,4 +1,5 @@
 """Daily acquisition, persistent interval archive and hourly Recorder imports."""
+import asyncio
 from datetime import date, timedelta
 import json
 import logging
@@ -27,6 +28,8 @@ class SSECoordinator(DataUpdateCoordinator):
     def __init__(self, hass, entry):
         super().__init__(hass, _LOGGER, config_entry=entry, name="SSE eZóna", update_interval=timedelta(minutes=30))
         self.entry = entry
+        self._manual_refresh_lock = asyncio.Lock()
+        self._manual_fetch = False
         self.eic = entry.data[CONF_EIC]
         settings = {**entry.data, **entry.options}
         self.client = SSEClient(async_get_clientsession(hass),
@@ -97,6 +100,18 @@ class SSECoordinator(DataUpdateCoordinator):
                 "status": status, "last_error": error, "last_attempt": self.archive["last_attempt"],
                 "next_attempt": next_attempt.isoformat() if error != "auth" else None, "fetch_hour": hour}
 
+    async def async_manual_refresh(self):
+        """Explicit update_entity fetch; coalesce rapid requests across sensors."""
+        async with self._manual_refresh_lock:
+            last_attempt = self.archive["last_attempt"]
+            if last_attempt is not None and dt_util.utcnow().timestamp() - last_attempt < 30:
+                return
+            self._manual_fetch = True
+            try:
+                await self.async_refresh()
+            finally:
+                self._manual_fetch = False
+
     async def _async_update_data(self):
         now = dt_util.utcnow()
         if self.archive.get("statistics_pending_from"):
@@ -104,7 +119,7 @@ class SSECoordinator(DataUpdateCoordinator):
             self.archive.pop("statistics_pending_from")
             await self.store.async_save(self.archive)
         hour = self.entry.options.get(CONF_FETCH_HOUR, self.entry.data.get(CONF_FETCH_HOUR, DEFAULT_FETCH_HOUR))
-        if not due(now, hour, self.archive["fetched_on"], self.archive["pending"], self.archive["last_attempt"]):
+        if not self._manual_fetch and not due(now, hour, self.archive["fetched_on"], self.archive["pending"], self.archive["last_attempt"]):
             return self.snapshot(now)
         # Persist attempt time even on failure, so reloads do not hammer login.
         self.archive["last_attempt"] = now.timestamp()

@@ -11,6 +11,9 @@ Versions use semantic versioning. GitHub Releases and this file describe the sam
 
 ### Fixed
 
+- Generate the OAuth security state as hexadecimal: SSE was observed rejecting login-start requests containing a hyphen in the state. The state retains 192 bits of randomness and exact response validation.
+- Make an explicit `homeassistant.update_entity` request on an SSE sensor perform a fresh fetch, including before the daily start hour or automatic retry deadline. Rapid manual requests across sensors are coalesced by a 30-second guard.
+
 - Identify SSE gateway HTML “Request Rejected” responses, including HTTP 200 and 403, without confusing a matching security page with bad credentials. Login format errors now identify the request stage and bounded response type without logging response bodies or tokens.
 
 - Keep `retrying_login` or `retrying_export` visible during retry delays and across restarts instead of returning to `waiting`. Expose the last attempt, earliest next attempt, fetch hour and a bounded error category on Sync status.

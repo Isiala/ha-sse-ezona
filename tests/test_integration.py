@@ -389,3 +389,45 @@ async def test_fetch_hour_defaults_and_existing_options(hass):
         entry = MockConfigEntry(domain=DOMAIN, data=data, options=options)
         coordinator = SSECoordinator(hass, entry)
         assert coordinator.snapshot(NOW)['fetch_hour'] == expected
+
+
+@pytest.mark.asyncio
+async def test_manual_sensor_refresh_fetches_before_start_hour_and_coalesces_duplicates(hass, freezer):
+    from datetime import timedelta
+    from custom_components.sse_ezona.sensor import SSESensor
+
+    # Automatic fetching waits for noon for this existing entry, but an explicit
+    # update_entity should fetch immediately and still guard rapid duplicates.
+    early = NOW.replace(hour=7)
+    freezer.move_to(early)
+    coordinator = coordinator_for(hass)
+    coordinator.archive['last_attempt'] = (early - timedelta(minutes=2)).timestamp()
+    days = {d['date']: d for d in [make_day(f'2026-10-{n}') for n in range(19, 26)]}
+    with patch('custom_components.sse_ezona.coordinator.parse_export', return_value=days):
+        await coordinator.async_refresh()
+        coordinator.client.login.assert_not_awaited()
+        await SSESensor(coordinator, 'sync_status').async_update()
+        await SSESensor(coordinator, 'yesterday').async_update()
+    assert coordinator.data['status'] == 'complete'
+    assert coordinator.client.login.await_count == 1
+    assert not coordinator._manual_fetch
+
+
+@pytest.mark.asyncio
+async def test_manual_failure_retains_retry_schedule_and_clears_manual_flag(hass, freezer):
+    from datetime import timedelta
+    from custom_components.sse_ezona.api import CannotConnect
+
+    freezer.move_to(NOW)
+    coordinator = coordinator_for(hass)
+    coordinator.client.login.side_effect = CannotConnect('temporary failure')
+    await coordinator.async_manual_refresh()
+    assert coordinator.data['status'] == 'retrying_login'
+    assert not coordinator._manual_fetch
+    freezer.move_to(NOW + timedelta(seconds=29))
+    await coordinator.async_manual_refresh()
+    assert coordinator.client.login.await_count == 1
+    freezer.move_to(NOW + timedelta(minutes=10))
+    await coordinator.async_refresh()
+    assert coordinator.client.login.await_count == 1
+    assert coordinator.data['next_attempt'] == (NOW + timedelta(minutes=30)).isoformat()

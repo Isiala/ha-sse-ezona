@@ -146,7 +146,9 @@ class SSEClient:
         return result
 
     async def login(self, username, password):
-        state = secrets.token_urlsafe(24)
+        # SSE's gateway rejects otherwise valid state values containing '-'.
+        # Hex retains the same 192 bits of randomness without that character.
+        state = secrets.token_hex(24)
         start = await self.post("/auth/api/public/login/v1/start", {
             "clientId": "sseWebPortal", "redirectUri": "/", "responseType": "token",
             "scope": "CHANNEL_WEB AUTHTYPE_* PERM_* ROLE_*", "state": state,

@@ -23,7 +23,7 @@ async def test_login_challenge_and_state_validation():
         "usernamePasswordMethod": {"secretPayload": "challenge", "passwordMethod": "PLAIN"}}}
     result = {"redirectUri": "/#" + urlencode({"state": "expected-state", "token_type": "Bearer",
                                                "access_token": "test-token", "expires_in": 7200})}
-    with patch("custom_components.sse_ezona.api.secrets.token_urlsafe", return_value="expected-state"):
+    with patch("custom_components.sse_ezona.api.secrets.token_hex", return_value="expected-state"):
         client.post = AsyncMock(side_effect=[start, result])
         assert await client.login("test@example.invalid", "test-password") == "test-token"
     authenticate = client.post.call_args_list[1].args[1]
@@ -168,3 +168,20 @@ async def test_malformed_authentication_response_identifies_stage_without_body(b
     client = SSEClient(response_session(body), sse_ssl_context())
     with pytest.raises(CannotConnect, match=message):
         await client.post('/auth/api/public/login/v1/authenticate', {})
+
+
+@pytest.mark.asyncio
+async def test_login_state_is_gateway_compatible_and_retains_192_bits():
+    # These bytes make token_urlsafe produce hyphens; hex must encode the
+    # same 24 random bytes without punctuation and verify the returned state.
+    expected_state = 'fb' * 24
+    client = SSEClient(None)
+    start = {'temporaryAccessToken': 'temporary', 'nextStep': {
+        'usernamePasswordMethod': {'secretPayload': 'challenge', 'passwordMethod': 'PLAIN'}}}
+    redirect = {'redirectUri': '/#' + urlencode({'state': expected_state, 'token_type': 'Bearer',
+                                              'access_token': 'test-token', 'expires_in': 7200})}
+    client.post = AsyncMock(side_effect=[start, redirect])
+    with patch('custom_components.sse_ezona.api.secrets.token_bytes', return_value=b'\xfb' * 24) as random_bytes:
+        assert await client.login('test@example.invalid', 'test-password') == 'test-token'
+    random_bytes.assert_called_once_with(24)
+    assert client.post.call_args_list[0].args[1]['state'] == expected_state

@@ -43,6 +43,10 @@ class SSESensor(CoordinatorEntity, SensorEntity):
             return datetime.fromisoformat(data["last_success"]) if data["last_success"] else None
         return data["status"]
 
+    async def async_update(self):
+        """A user-requested refresh should fetch, not just check the schedule."""
+        await self.coordinator.async_manual_refresh()
+
     @property
     def extra_state_attributes(self):
         data = self.coordinator.data or self.coordinator.snapshot()
