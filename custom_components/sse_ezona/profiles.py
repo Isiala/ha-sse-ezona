@@ -8,7 +8,7 @@ import math
 
 import xlrd
 
-from .const import METER_TZ
+from .const import FETCH_RETRY_INTERVAL, METER_TZ
 
 
 class ProfileError(Exception):
@@ -124,11 +124,18 @@ def fetch_range(days, target, pending=()):
     return first, target
 
 
-def due(now, fetch_hour, fetched_on, pending, last_attempt):
-    """One scheduled fetch per day, with a bounded three-hour retry cadence."""
+def next_fetch(now, fetch_hour, fetched_on, pending, last_attempt):
+    """Earliest allowed attempt, in UTC; coordinator checks may run later."""
     local = now.astimezone(METER_TZ)
-    if local.hour < fetch_hour:
-        return False
+    day = local.date()
     if fetched_on == local.date().isoformat() and not pending:
-        return False
-    return not last_attempt or now.timestamp() - last_attempt >= 3 * 3600
+        day += timedelta(days=1)
+    scheduled = datetime.combine(day, time(hour=fetch_hour), METER_TZ).astimezone(timezone.utc)
+    if last_attempt is not None:
+        scheduled = max(scheduled, datetime.fromtimestamp(last_attempt, timezone.utc) + FETCH_RETRY_INTERVAL)
+    return scheduled
+
+
+def due(now, fetch_hour, fetched_on, pending, last_attempt):
+    """One successful fetch per day, with at least 30 minutes between retries."""
+    return now >= next_fetch(now, fetch_hour, fetched_on, pending, last_attempt)

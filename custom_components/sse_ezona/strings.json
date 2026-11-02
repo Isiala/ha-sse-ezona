@@ -40,7 +40,7 @@
     "step": {
       "init": {
         "title": "Daily fetch and VPN proxy",
-        "description": "The integration checks locally every 30 minutes and contacts SSE once after this hour. Unpublished days retry at most every three hours. The optional proxy applies only to SSE. Leave its URL empty for direct access. Changing it reloads the integration.",
+        "description": "The integration checks locally every 30 minutes and contacts SSE after this hour (06:00 by default for new installations). Unpublished days and temporary failures retry at least 30 minutes apart, at the next schedule check. Existing installations keep their saved hour; change it here to fetch earlier. The optional proxy applies only to SSE. Leave its URL empty for direct access. Changing settings reloads the integration.",
         "data": {
           "fetch_hour": "Fetch hour (Europe/Bratislava)",
           "proxy_url": "VPN proxy URL (optional)",

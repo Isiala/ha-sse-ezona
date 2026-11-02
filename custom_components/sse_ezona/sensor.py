@@ -1,5 +1,5 @@
 """Status and yesterday energy. Historical consumption uses external statistics."""
-from datetime import datetime
+from datetime import datetime, timezone
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.const import EntityCategory, UnitOfEnergy
@@ -49,7 +49,10 @@ class SSESensor(CoordinatorEntity, SensorEntity):
         if self.key == "sync_status":
             return {"sse_eic": self.coordinator.eic, "profile_revision": data["profile_revision"],
                     "latest_day": data["latest_day"], "pending_dates": data["pending"],
-                    "statistic_id": self.coordinator.statistic_id, "meter_timezone": "Europe/Bratislava"}
+                    "statistic_id": self.coordinator.statistic_id, "meter_timezone": "Europe/Bratislava",
+                    "last_error": data["last_error"],
+                    "last_attempt": datetime.fromtimestamp(data["last_attempt"], timezone.utc).isoformat() if data["last_attempt"] is not None else None,
+                    "next_attempt": data["next_attempt"], "fetch_hour": data["fetch_hour"]}
         if self.key == "yesterday":
             return {"date": data["yesterday"], "interval_minutes": 15}
         return None

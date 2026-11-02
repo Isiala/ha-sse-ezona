@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from custom_components.sse_ezona.profiles import (
-    ProfileError, day_bounds, day_energy, due, fetch_range, hourly_statistics,
+    ProfileError, day_bounds, day_energy, due, fetch_range, hourly_statistics, next_fetch,
     merge_days, parse_export, validate_day,
 )
 from custom_components.sse_ezona.const import METER_TZ
@@ -85,4 +85,24 @@ def test_scheduling_uses_meter_time_and_bounds_retries():
     assert not due(now, 13, None, [], None)
     assert not due(now, 12, "2026-10-26", [], None)
     assert due(now, 12, "2026-10-26", ["2026-10-25"], now.timestamp() - 10800)
-    assert not due(now, 12, None, [], now.timestamp() - 3600)
+    assert not due(now, 12, None, [], now.timestamp() - 1799)
+    assert due(now, 12, None, [], now.timestamp() - 1800)
+
+
+@pytest.mark.parametrize("value,start_utc", [("2026-10-25", 5), ("2026-03-29", 4)])
+def test_default_morning_start_on_dst_change_days(value, start_utc):
+    from datetime import timedelta
+    from custom_components.sse_ezona.const import DEFAULT_FETCH_HOUR
+
+    start = datetime.fromisoformat(value).replace(hour=start_utc, tzinfo=timezone.utc)
+    assert DEFAULT_FETCH_HOUR == 6
+    assert not due(start - timedelta(seconds=1), DEFAULT_FETCH_HOUR, None, [], None)
+    assert due(start, DEFAULT_FETCH_HOUR, None, [], None)
+    assert not due(start, DEFAULT_FETCH_HOUR, value, [], None)
+    assert due(start, DEFAULT_FETCH_HOUR, value, [value], None)
+
+
+def test_retry_crossing_midnight_respects_next_day_start():
+    now = datetime(2026, 10, 26, 23, 10, tzinfo=timezone.utc)  # 00:10 local
+    assert not due(now, 6, None, ["2026-10-25"], now.timestamp() - 3600)
+    assert next_fetch(now, 6, None, [], None) == datetime(2026, 10, 27, 5, tzinfo=timezone.utc)

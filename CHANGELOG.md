@@ -2,6 +2,18 @@
 
 Versions use semantic versioning. GitHub Releases and this file describe the same release.
 
+## [Unreleased]
+
+### Changed
+
+- Start new installations at 06:00 Europe/Bratislava by default. Existing configured hours remain unchanged; set Fetch hour to 6 in integration options to move an existing noon schedule earlier.
+- Retry unpublished days and transient login/export failures at least 30 minutes apart, on the next 30-minute coordinator check, instead of waiting three hours.
+
+### Fixed
+
+- Keep `retrying_login` or `retrying_export` visible during retry delays and across restarts instead of returning to `waiting`. Expose the last attempt, earliest next attempt, fetch hour and a bounded error category on Sync status.
+- Preserve the previous archive and last successful sync during temporary failures. Authentication rejection still triggers reauthentication; successful but incomplete exports remain `pending`.
+
 ## [0.3.0] - 2026-10-26
 
 First public HACS release, based on the previously deployed local 0.2.0 integration.

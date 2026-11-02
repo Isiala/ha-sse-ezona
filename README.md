@@ -12,8 +12,8 @@ This is an independent community integration using SSE's undocumented website AP
 
 - Signs in with an SSE **email/username and password**; no browser or manually copied bearer token is needed for daily operation.
 - Downloads the SSE Excel profile, validates complete 15-minute readings and converts average kW to kWh.
-- Fetches daily after **12:00 Europe/Bratislava** by default, within the next 30-minute check. The hour is configurable.
-- Rechecks seven days for corrections, catches up after an outage in monthly chunks, and retries unpublished days at most every three hours after the configured hour.
+- Fetches daily after **06:00 Europe/Bratislava** by default, within the next 30-minute check. The hour is configurable.
+- Rechecks seven days for corrections, catches up after an outage in monthly chunks, and retries unpublished days and transient login/export failures at least 30 minutes apart after the configured hour (normally within 30–60 minutes, at the next schedule check).
 - Handles 23-, 24- and 25-hour local days. Missing readings are not replaced with zero.
 - Imports hourly historical Recorder statistics, so yesterday's consumption is recorded against yesterday rather than today's download time.
 - Exposes Yesterday energy, Sync status and Last successful sync sensors, plus an authenticated WebSocket endpoint for custom dashboards.
@@ -73,6 +73,10 @@ Only grid consumption is imported. VT/NT tariff splits, prices, generation and e
 
 Change fetch time and proxy settings under **Settings → Devices & services → SSE eZóna → options**.
 
+**Existing installations keep their saved fetch hour**, including the former noon default. To start earlier, set **Fetch hour** to **6** in options. The new default applies to new entries or entries without a saved hour. The schedule uses Europe/Bratislava time, including daylight-saving changes. A successful complete fetch stops further SSE requests until the next day; missing days and temporary errors continue retrying after the configured start hour.
+
+The Sync status sensor keeps `retrying_login` or `retrying_export` visible during the retry delay and after a restart. `last_error` contains only `login`, `export` or `auth`, never the response body. `next_attempt` is the earliest permitted time; the next 30-minute coordinator check may be later. Rejected credentials still trigger Home Assistant reauthentication and show `reauth_required` instead of a scheduled retry.
+
 | Setting | Meaning |
 | --- | --- |
 | SSE email or username / password | Account used for each daily sign-in |
@@ -84,7 +88,7 @@ Change fetch time and proxy settings under **Settings → Devices & services →
 | Entity | Meaning |
 | --- | --- |
 | Yesterday energy | Complete previous local day's kWh, or unknown if unavailable |
-| Sync status | `complete`, `pending` or `waiting`; includes latest complete day and pending dates |
+| Sync status | `complete`, `pending`, `waiting`, `retrying_login`, `retrying_export` or `reauth_required`; includes latest complete day, pending dates, last attempt, earliest next attempt and a bounded error category |
 | Last successful sync | Time of a successful scheduled acquisition; initially unknown before the first run |
 
 ## Optional Slovakia VPN route
@@ -117,6 +121,7 @@ The response contains interval history and status, never credentials. Do not ser
 
 - **Could not connect:** check the portal manually, SSE access restrictions and the proxy connection. The gateway is contacted with TLS 1.2 because its current security gateway rejected default Python TLS requests during testing; CA and hostname checks remain enabled.
 - **Invalid authentication:** re-enter credentials using Home Assistant's reauthentication flow. Extra email-code, CAPTCHA and social-login challenges are not automated.
+- **Retrying login / export:** a temporary request or parsing failure occurred. Inspect Sync status attributes for the earliest next attempt. The status persists until a real fetch succeeds; a local schedule check does not clear it. A successful but incomplete export returns to `pending`.
 - **Unknown yesterday / pending dates:** SSE may not have published a complete day. The integration waits and retries; it does not invent zero consumption.
 - **Energy is blank today:** choose yesterday. Successful setup does not make SSE a live meter.
 - **No Last successful sync yet:** setup validates the export, but the first scheduled acquisition occurs after the configured fetch hour.
