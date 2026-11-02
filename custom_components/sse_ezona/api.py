@@ -129,9 +129,26 @@ class SSEClient:
                 if response.status != 200:
                     raise CannotConnect(f"SSE returned HTTP {response.status}")
                 return bytes(data), content_type
-        except (aiohttp.ClientError, asyncio.TimeoutError):
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             message = "Could not reach SSE through the configured proxy" if self.proxy_url else "Could not reach SSE"
-            raise CannotConnect(message) from None
+            # Exception strings may contain URLs or proxy credentials. Classify
+            # only known transport types, never include their raw messages.
+            if isinstance(exc, aiohttp.ClientConnectorCertificateError):
+                reason = "TLS certificate verification failed"
+                code = getattr(exc.certificate_error, "verify_code", None)
+                if isinstance(code, int):
+                    reason += f", verification code {code}"
+            elif isinstance(exc, aiohttp.ClientConnectorSSLError):
+                reason = "TLS handshake failed"
+            elif isinstance(exc, aiohttp.ClientProxyConnectionError):
+                reason = "proxy connection failed"
+            elif isinstance(exc, aiohttp.ClientConnectorError):
+                reason = "DNS or socket connection failed"
+            elif isinstance(exc, asyncio.TimeoutError):
+                reason = "request timed out"
+            else:
+                reason = "HTTP transport failed"
+            raise CannotConnect(f"{message}: {reason} during {request_stage(path)}") from None
 
     async def post(self, path, payload):
         body, content_type = await self.request(path, payload=payload)

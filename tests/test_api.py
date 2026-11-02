@@ -185,3 +185,14 @@ async def test_login_state_is_gateway_compatible_and_retains_192_bits():
         assert await client.login('test@example.invalid', 'test-password') == 'test-token'
     random_bytes.assert_called_once_with(24)
     assert client.post.call_args_list[0].args[1]['state'] == expected_state
+
+
+@pytest.mark.asyncio
+async def test_certificate_transport_diagnostics_do_not_echo_exception_strings():
+    error = ssl.SSLCertVerificationError(1, 'private certificate detail')
+    session = MagicMock()
+    session.request.side_effect = aiohttp.ClientConnectorCertificateError(MagicMock(), error)
+    client = SSEClient(session, sse_ssl_context())
+    with pytest.raises(CannotConnect, match='TLS certificate verification failed.*login-start') as result:
+        await client.login('test@example.invalid', 'test-password')
+    assert 'private certificate detail' not in str(result.value)
