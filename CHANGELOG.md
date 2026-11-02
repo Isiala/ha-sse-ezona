@@ -11,6 +11,8 @@ Versions use semantic versioning. GitHub Releases and this file describe the sam
 
 ### Fixed
 
+- Identify SSE gateway HTML “Request Rejected” responses, including HTTP 200 and 403, without confusing a matching security page with bad credentials. Login format errors now identify the request stage and bounded response type without logging response bodies or tokens.
+
 - Keep `retrying_login` or `retrying_export` visible during retry delays and across restarts instead of returning to `waiting`. Expose the last attempt, earliest next attempt, fetch hour and a bounded error category on Sync status.
 - Preserve the previous archive and last successful sync during temporary failures. Authentication rejection still triggers reauthentication; successful but incomplete exports remain `pending`.
 
